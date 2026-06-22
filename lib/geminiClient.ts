@@ -9,6 +9,11 @@ export function getGeminiApiKey(): string {
       'GEMINI_API_KEY is required when LLM_PROVIDER=gemini. Get a free key at https://aistudio.google.com/apikey'
     );
   }
+  if (!key.startsWith('AIza') && !key.startsWith('AQ.')) {
+    throw new Error(
+      'GEMINI_API_KEY looks invalid (should start with AIza or AQ.). Create a new key at https://aistudio.google.com/apikey'
+    );
+  }
   return key;
 }
 
@@ -24,12 +29,30 @@ function modelPath(model: string): string {
   return model.startsWith('models/') ? model : `models/${model}`;
 }
 
+function geminiRequestHeaders(apiKey: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': apiKey,
+  };
+}
+
+function formatGeminiAuthError(status: number, err: string): string {
+  if (status === 401) {
+    return (
+      `Gemini authentication failed (401). Use a key from https://aistudio.google.com/apikey ` +
+      `(AIza... or AQ....), paste the full key in Render GEMINI_API_KEY with no quotes/spaces, then redeploy. ` +
+      `Details: ${err.slice(0, 200)}`
+    );
+  }
+  return `Gemini request failed (${status}): ${err.slice(0, 300)}`;
+}
+
 async function geminiEmbedText(text: string): Promise<number[]> {
   const apiKey = getGeminiApiKey();
   const model = modelPath(getGeminiEmbeddingModel());
-  const res = await fetch(`${GEMINI_BASE}/${model}:embedContent?key=${apiKey}`, {
+  const res = await fetch(`${GEMINI_BASE}/${model}:embedContent`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: geminiRequestHeaders(apiKey),
     body: JSON.stringify({
       model,
       content: { parts: [{ text }] },
@@ -39,7 +62,7 @@ async function geminiEmbedText(text: string): Promise<number[]> {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Gemini embed failed (${res.status}): ${err.slice(0, 300)}`);
+    throw new Error(formatGeminiAuthError(res.status, err));
   }
 
   const body = (await res.json()) as { embedding?: { values?: number[] } };
@@ -82,8 +105,8 @@ export class GeminiChatModel {
 
     const path = modelPath(this.model);
     const url = this.streaming
-      ? `${GEMINI_BASE}/${path}:streamGenerateContent?key=${this.apiKey}&alt=sse`
-      : `${GEMINI_BASE}/${path}:generateContent?key=${this.apiKey}`;
+      ? `${GEMINI_BASE}/${path}:streamGenerateContent?alt=sse`
+      : `${GEMINI_BASE}/${path}:generateContent`;
 
     const payload: Record<string, unknown> = {
       contents,
@@ -95,14 +118,14 @@ export class GeminiChatModel {
 
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: geminiRequestHeaders(this.apiKey),
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(120_000),
     });
 
     if (!res.ok) {
       const errBody = await res.text();
-      throw new Error(`Gemini chat failed (${res.status}): ${errBody.slice(0, 300)}`);
+      throw new Error(formatGeminiAuthError(res.status, errBody));
     }
 
     if (!this.streaming) {
