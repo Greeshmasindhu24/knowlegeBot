@@ -11,32 +11,100 @@ export interface BackendUser {
   department: string;
 }
 
-export async function getAuthenticatedUser(): Promise<BackendUser | null> {
+export type AuthFailureReason =
+  | 'no_token'
+  | 'backend_unreachable'
+  | 'invalid_token'
+  | 'user_not_found';
+
+export interface AuthResult {
+  user: BackendUser | null;
+  reason?: AuthFailureReason;
+  message?: string;
+}
+
+function mapAuthFailure(status: number, detail?: string): AuthResult {
+  if (status === 401) {
+    const lower = (detail || '').toLowerCase();
+    if (lower.includes('not found')) {
+      return {
+        user: null,
+        reason: 'user_not_found',
+        message: 'Your account is not in the backend database. Register again on this deployment.',
+      };
+    }
+    return {
+      user: null,
+      reason: 'invalid_token',
+      message: 'Your session expired or is invalid. Sign out and sign in again.',
+    };
+  }
+
+  return {
+    user: null,
+    reason: 'backend_unreachable',
+    message:
+      status === 404
+        ? `Backend not found at ${getBackendUrl()}. Set BACKEND_URL on Render to your FastAPI service URL (no /api suffix).`
+        : `Authentication service error (${status}). Check that the backend is running on Render.`,
+  };
+}
+
+export async function getAuthResult(): Promise<AuthResult> {
   const cookieStore = await cookies();
   const token = cookieStore.get('auth_token')?.value;
-  if (!token) return null;
+  if (!token) {
+    return { user: null, reason: 'no_token', message: 'Not signed in.' };
+  }
 
   try {
     const res = await fetch(`${getBackendUrl()}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
       signal: AbortSignal.timeout(10_000),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      let detail: string | undefined;
+      try {
+        const body = await parseJsonResponse<{ detail?: string }>(res);
+        detail = typeof body.detail === 'string' ? body.detail : undefined;
+      } catch {
+        /* non-JSON error body */
+      }
+      return mapAuthFailure(res.status, detail);
+    }
 
     const data = await parseJsonResponse<BackendUser>(res);
-    if (!data.id) return null;
+    if (!data.id) {
+      return {
+        user: null,
+        reason: 'invalid_token',
+        message: 'Invalid session. Sign out and sign in again.',
+      };
+    }
 
     return {
-      id: data.id,
-      email: data.email,
-      full_name: data.full_name ?? null,
-      role: data.role ?? 'employee',
-      department: data.department ?? 'General',
+      user: {
+        id: data.id,
+        email: data.email,
+        full_name: data.full_name ?? null,
+        role: data.role ?? 'employee',
+        department: data.department ?? 'General',
+      },
     };
   } catch {
-    return null;
+    return {
+      user: null,
+      reason: 'backend_unreachable',
+      message: `Cannot reach the API at ${getBackendUrl()}. Set BACKEND_URL on the frontend Render service.`,
+    };
   }
+}
+
+export async function getAuthenticatedUser(): Promise<BackendUser | null> {
+  const { user } = await getAuthResult();
+  return user;
 }
 
 const UUID_RE =

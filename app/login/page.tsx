@@ -25,7 +25,15 @@ export default function LoginPage() {
 
   // Remove leaked credentials from URL (from old GET form submits)
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.search) {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const authError = params.get('error');
+    if (authError) {
+      setError(authError);
+    }
+
+    if (window.location.search) {
       window.history.replaceState({}, '', '/login');
     }
   }, []);

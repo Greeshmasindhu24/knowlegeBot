@@ -36,6 +36,11 @@ def get_llm() -> BaseChatModel:
             model=settings.ollama_model,
             temperature=0.1,
         )
+    if settings.llm_provider == "gemini":
+        raise RuntimeError(
+            "Backend RAG chat supports only LLM_PROVIDER=openai or ollama; "
+            "Gemini is handled by the frontend."
+        )
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
     return ChatOpenAI(

@@ -59,7 +59,8 @@ class Settings(BaseSettings):
     chroma_persist_dir: str | None = None  # in-process mode when set
 
     # LLM
-    llm_provider: Literal["openai", "ollama"] = "openai"
+    # "gemini" is accepted because the deployed frontend handles Gemini chat.
+    llm_provider: Literal["openai", "ollama", "gemini"] = "openai"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"

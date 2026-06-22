@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase-server';
-import { getAuthenticatedUser, ensureSupabaseUser } from '@/lib/backend-auth';
+import { getAuthResult, ensureSupabaseUser } from '@/lib/backend-auth';
 import {
   prepareChatContext,
   finalizeChatResult,
@@ -14,9 +14,12 @@ export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser();
+    const { user, message } = await getAuthResult();
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { error: message || 'Unauthorized' },
+        { status: 401 },
+      );
     }
 
     await ensureSupabaseUser(user);

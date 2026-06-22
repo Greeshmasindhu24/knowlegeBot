@@ -1,5 +1,15 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+function isJwtExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    if (typeof payload.exp !== 'number') return false;
+    return Date.now() >= payload.exp * 1000;
+  } catch {
+    return true;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   
@@ -11,14 +21,16 @@ export async function middleware(request: NextRequest) {
   // Check for JWT token in cookies
   const token = request.cookies.get('auth_token')?.value;
 
-  if (!token) {
-    // Redirect to login if no token
+  if (!token || isJwtExpired(token)) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    return NextResponse.redirect(url);
+    const response = NextResponse.redirect(url);
+    if (token) {
+      response.cookies.delete('auth_token');
+    }
+    return response;
   }
 
-  // Token exists; allow the request
   return NextResponse.next();
 }
 

@@ -20,6 +20,12 @@ def get_embeddings() -> Embeddings:
             model=settings.ollama_embedding_model,
         )
 
+    if settings.llm_provider == "gemini":
+        raise RuntimeError(
+            "Backend embeddings support only LLM_PROVIDER=openai or ollama; "
+            "Gemini is handled by the frontend."
+        )
+
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
 

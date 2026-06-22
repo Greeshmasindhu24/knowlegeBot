@@ -21,8 +21,32 @@ export function getGeminiChatModel(): string {
   return normalizeEnvValue(process.env.GEMINI_MODEL) || 'gemini-2.0-flash';
 }
 
+const GEMINI_EMBEDDING_DEFAULT = 'gemini-embedding-001';
+
+/** Map deprecated or mistaken env values to a supported Gemini embed model. */
+function normalizeGeminiEmbeddingModel(model: string | undefined): string {
+  const raw = normalizeEnvValue(model);
+  if (!raw) return GEMINI_EMBEDDING_DEFAULT;
+
+  const lower = raw.toLowerCase();
+  const unsupported = new Set([
+    'text-embedding-004',
+    'text-embedding-003',
+    'text-embedding-002',
+    'embedding-001',
+    'models/text-embedding-004',
+    'models/embedding-001',
+  ]);
+
+  if (unsupported.has(lower) || lower.startsWith('text-embedding-')) {
+    return GEMINI_EMBEDDING_DEFAULT;
+  }
+
+  return raw.replace(/^models\//i, '');
+}
+
 export function getGeminiEmbeddingModel(): string {
-  return normalizeEnvValue(process.env.GEMINI_EMBEDDING_MODEL) || 'gemini-embedding-001';
+  return normalizeGeminiEmbeddingModel(process.env.GEMINI_EMBEDDING_MODEL);
 }
 
 function modelPath(model: string): string {

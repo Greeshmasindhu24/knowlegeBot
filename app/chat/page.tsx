@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { 
   MessageSquare, 
   Send, 
@@ -59,6 +60,7 @@ const SUGGESTED_PROMPTS = [
 ];
 
 export default function ChatPage() {
+  const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>('new');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -112,11 +114,22 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const handleAuthFailure = async (message: string) => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+    router.push(`/login?error=${encodeURIComponent(message)}`);
+    router.refresh();
+  };
+
   const fetchSessions = async () => {
     try {
       setLoadingSessions(true);
       const res = await fetch('/api/chat/sessions');
       const data = await res.json();
+
+      if (res.status === 401) {
+        await handleAuthFailure(data.error || 'Session expired. Please sign in again.');
+        return;
+      }
 
       if (!res.ok) {
         console.error('Error loading chat sessions:', data.error);
@@ -242,6 +255,10 @@ export default function ChatPage() {
           if (typeof errBody?.error === 'string') detail = errBody.error;
         } catch {
           /* non-JSON error body */
+        }
+        if (response.status === 401) {
+          await handleAuthFailure(detail);
+          return;
         }
         throw new Error(detail);
       }
