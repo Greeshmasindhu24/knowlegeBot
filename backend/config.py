@@ -1,11 +1,12 @@
 """Application configuration loaded from environment variables."""
 
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parent
@@ -30,6 +31,18 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://ekb:ekb@localhost:5432/ekb",
         env=["NEON_DATABASE_URL", "DATABASE_URL"],
     )
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        url = value.strip()
+        if url.startswith("postgres://"):
+            return "postgresql+asyncpg://" + url[len("postgres://") :]
+        if url.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + url[len("postgresql://") :]
+        return url
 
     # JWT
     jwt_secret: str = "change-me-in-production"
@@ -62,8 +75,29 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     similarity_threshold: float = 0.25
 
-    # CORS
-    cors_origins: list[str] = ["http://localhost:3000"]
+    # CORS — accepts JSON array, comma-separated URLs, or a single URL (Render env)
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> list[str]:
+        if value is None:
+            return ["http://localhost:3000"]
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return ["http://localhost:3000"]
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if not isinstance(parsed, list):
+                    raise ValueError("CORS_ORIGINS JSON must be an array")
+                return [str(item).strip() for item in parsed if str(item).strip()]
+            if "," in stripped:
+                return [part.strip() for part in stripped.split(",") if part.strip()]
+            return [stripped]
+        return value
 
 
 @lru_cache

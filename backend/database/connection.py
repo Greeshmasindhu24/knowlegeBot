@@ -15,8 +15,13 @@ class Base(DeclarativeBase):
     pass
 
 
+def _is_render_internal_postgres(host: str) -> bool:
+    """Render internal DB hostnames look like dpg-xxxxx-a (no SSL required)."""
+    return host.startswith("dpg-") and host.endswith("-a")
+
+
 def _connect_args(database_url: str) -> dict:
-    """Enable SSL for hosted Postgres (Supabase/Neon); skip for local/docker."""
+    """Enable SSL for hosted Postgres (Supabase/Neon); skip for local/docker/Render internal."""
     parsed = urlparse(database_url.replace("+asyncpg", ""))
     host = (parsed.hostname or "").lower()
     port = parsed.port or 5432
@@ -24,7 +29,9 @@ def _connect_args(database_url: str) -> dict:
 
     if host in {"localhost", "127.0.0.1", "postgres"}:
         return args
-    if "sslmode=disable" in database_url:
+    if _is_render_internal_postgres(host):
+        return args
+    if "sslmode=disable" in database_url.lower():
         return args
 
     args["ssl"] = ssl.create_default_context()
