@@ -29,7 +29,11 @@ export function getEmbeddingDimensions(): number {
 }
 
 export function isOllamaConfigured(): boolean {
-  return Boolean(process.env.OLLAMA_BASE_URL?.trim());
+  const url = process.env.OLLAMA_BASE_URL?.trim();
+  if (!url) return false;
+  // Never use Ollama on Render — it only runs on your local machine.
+  if (process.env.RENDER) return false;
+  return true;
 }
 
 function ollamaBaseUrl(): string {
@@ -80,6 +84,12 @@ export function formatEmbeddingError(error: unknown): string {
   }
 
   if (lower.includes('model') && lower.includes('not found')) {
+    if (process.env.RENDER) {
+      return (
+        'Embedding failed on Render. Set LLM_PROVIDER=gemini, GEMINI_API_KEY, EMBEDDING_DIMENSIONS=768, ' +
+        'remove OLLAMA_BASE_URL, redeploy, and re-upload documents.'
+      );
+    }
     return (
       `Ollama embedding model "${ollamaEmbeddingModel()}" is not installed. Run: ollama pull ${ollamaEmbeddingModel()}`
     );
