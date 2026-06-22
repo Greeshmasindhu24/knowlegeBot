@@ -1,8 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backendUrl';
 import { parseJsonResponse } from '@/lib/parseJsonResponse';
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export async function GET() {
   try {
@@ -13,7 +12,7 @@ export async function GET() {
       return NextResponse.json({ detail: 'Not authenticated' }, { status: 401 });
     }
 
-    const res = await fetch(`${BACKEND_URL}/auth/me`, {
+    const res = await fetch(`${getBackendUrl()}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(10_000),
     });

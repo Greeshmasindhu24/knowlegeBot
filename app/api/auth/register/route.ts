@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backendUrl';
 import { parseJsonResponse } from '@/lib/parseJsonResponse';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const BACKEND_TIMEOUT_MS = 20_000;
 
 async function backendFetch(path: string, init: RequestInit) {
-  return fetch(`${BACKEND_URL}${path}`, {
+  return fetch(`${getBackendUrl()}${path}`, {
     ...init,
     signal: AbortSignal.timeout(BACKEND_TIMEOUT_MS),
   });
@@ -30,10 +30,13 @@ export async function POST(request: NextRequest) {
     const data = await parseJsonResponse<{ detail?: string }>(res);
 
     if (!res.ok) {
-      return NextResponse.json(
-        { detail: data.detail || 'Registration failed' },
-        { status: res.status },
-      );
+      const detail =
+        typeof data.detail === 'string'
+          ? data.detail
+          : res.status === 404
+            ? `Backend not found at ${getBackendUrl()}. Check BACKEND_URL / NEXT_PUBLIC_API_URL on Render.`
+            : 'Registration failed';
+      return NextResponse.json({ detail }, { status: res.status });
     }
 
     return NextResponse.json(data, { status: 201 });
