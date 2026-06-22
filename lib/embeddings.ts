@@ -1,4 +1,5 @@
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { getOpenAiApiKey, getOpenAiEmbeddingModel } from './openaiConfig';
 
 export type LlmProvider = 'openai' | 'ollama';
 
@@ -141,20 +142,14 @@ export function createOllamaEmbeddingsClient(): EmbeddingsClient {
 }
 
 function assertOpenAiConfigured(): void {
-  const key = process.env.OPENAI_API_KEY?.trim();
-  if (!key || !key.startsWith('sk-')) {
-    throw new Error(
-      'OpenAI API key is missing or invalid. Add a valid OPENAI_API_KEY (starts with sk-) to .env.local, ' +
-      'or set LLM_PROVIDER=ollama for local embeddings.'
-    );
-  }
+  getOpenAiApiKey();
 }
 
 export function createOpenAiEmbeddingsClient(): EmbeddingsClient {
   assertOpenAiConfigured();
   const openai = new OpenAIEmbeddings({
-    openAIApiKey: process.env.OPENAI_API_KEY,
-    modelName: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+    apiKey: getOpenAiApiKey(),
+    model: getOpenAiEmbeddingModel(),
   });
   return {
     provider: 'openai',

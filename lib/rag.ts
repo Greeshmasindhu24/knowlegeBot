@@ -9,6 +9,7 @@ import {
   getEmbeddingsClient,
   getLlmProvider,
 } from './embeddings';
+import { getOpenAiApiKey, getOpenAiChatModel } from './openaiConfig';
 
 export interface SearchMatch {
   id: string;
@@ -115,16 +116,11 @@ export const getLLMClient = (streaming = true) => {
     return new OllamaChatModel(ollamaChatModel(), ollamaBaseUrl(), streaming) as unknown as ChatOpenAI;
   }
 
-  const key = process.env.OPENAI_API_KEY?.trim();
-  if (!key || !key.startsWith('sk-')) {
-    throw new Error(
-      'OpenAI API key is missing or invalid. Set OPENAI_API_KEY in .env.local, or LLM_PROVIDER=ollama for local chat.'
-    );
-  }
+  const key = getOpenAiApiKey();
 
   return new ChatOpenAI({
-    openAIApiKey: process.env.OPENAI_API_KEY,
-    modelName: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    apiKey: key,
+    model: getOpenAiChatModel(),
     temperature: 0.1,
     streaming,
   });
