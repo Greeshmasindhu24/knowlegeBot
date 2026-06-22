@@ -32,11 +32,12 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const form = e.currentTarget;
     setError(null);
     setSuccess(null);
     setIsPending(true);
 
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(form);
     const email = (formData.get('email') as string)?.trim();
     const password = formData.get('password') as string;
 
@@ -94,10 +95,13 @@ export default function LoginPage() {
       }
 
       setSuccess('Registration successful! You can now log in.');
-      e.currentTarget.reset();
+      setError(null);
+      form.reset();
       setActiveTab('login');
       setIsPending(false);
-    } catch {
+    } catch (err) {
+      console.error('Auth form error:', err);
+      setSuccess(null);
       setError('Something went wrong. Please try again.');
       setIsPending(false);
     }

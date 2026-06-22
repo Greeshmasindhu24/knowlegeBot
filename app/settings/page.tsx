@@ -20,6 +20,7 @@ interface ProfileData extends UserProfile {}
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   
   // Diagnostic state
@@ -45,10 +46,14 @@ export default function SettingsPage() {
     try {
       setLoadingProfile(true);
 
-      const jwtProfile = await fetchUserProfile();
-      if (jwtProfile) {
-        setProfile(jwtProfile);
+      const jwtResult = await fetchUserProfile();
+      if (jwtResult.profile) {
+        setProfile(jwtResult.profile);
+        setProfileError(null);
         return;
+      }
+      if (jwtResult.error) {
+        setProfileError(jwtResult.error);
       }
 
       const { createClient } = await import('@/lib/supabase-client');
@@ -174,7 +179,15 @@ export default function SettingsPage() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-6 text-slate-550">Failed to load profile.</div>
+            <div className="text-center py-6 space-y-2">
+              <p className="text-red-400 text-xs font-semibold">
+                {profileError || 'Failed to load profile.'}
+              </p>
+              <p className="text-[10px] text-slate-500 max-w-sm mx-auto leading-relaxed">
+                Profile and document lists require the FastAPI backend on port 8000 and your login
+                session. Start the backend, then log out and sign in again if needed.
+              </p>
+            </div>
           )}
         </div>
 

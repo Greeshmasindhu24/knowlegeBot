@@ -9,9 +9,6 @@ import {
   Loader2, 
   Bot, 
   User, 
-  BookOpen, 
-  ChevronDown, 
-  ChevronUp, 
   Sparkles,
   Trash2,
   Calendar,
@@ -21,6 +18,11 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import KnowledgeConsole from '@/components/KnowledgeConsole';
+
+/** Hide [Source N] tags in the chat bubble (citations still stored server-side). */
+function formatChatAnswer(text: string): string {
+  return text.replace(/\s*\[Source[^\]]*\]/gi, '').trim();
+}
 
 interface ChatSession {
   id: string;
@@ -68,8 +70,6 @@ export default function ChatPage() {
   const [generating, setGenerating] = useState(false);
   const [progressStep, setProgressStep] = useState<string | null>(null);
 
-  // Citation view state
-  const [expandedCitationIdx, setExpandedCitationIdx] = useState<number | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
 
@@ -115,24 +115,16 @@ export default function ChatPage() {
   const fetchSessions = async () => {
     try {
       setLoadingSessions(true);
-      const res = await fetch('/api/documents'); // Wait, let's fetch from documents or check if we can select chat sessions
-      // Since we don't have a direct /api/chat-sessions, we can make a query to get chat sessions using supabase client inline or fetch.
-      // Wait, we can fetch all sessions. Let's retrieve from database using inline Supabase client.
-      // Wait! Client components can use the client-side Supabase helper.
-      const { createClient } = await import('@/lib/supabase-client');
-      const supabase = createClient();
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: chatSessions, error } = await supabase
-          .from('chat_sessions')
-          .select('id, title, created_at')
-          .eq('user_id', user.id)
-          .order('updated_at', { ascending: false });
+      const res = await fetch('/api/chat/sessions');
+      const data = await res.json();
 
-        if (!error && chatSessions) {
-          setSessions(chatSessions);
-        }
+      if (!res.ok) {
+        console.error('Error loading chat sessions:', data.error);
+        return;
+      }
+
+      if (data.sessions) {
+        setSessions(data.sessions);
       }
     } catch (err) {
       console.error('Error loading chat sessions:', err);
@@ -144,18 +136,23 @@ export default function ChatPage() {
   const fetchMessages = async (sessionId: string) => {
     try {
       setLoadingMessages(true);
-      const { createClient } = await import('@/lib/supabase-client');
-      const supabase = createClient();
-      
-      const { data: historyMsgs, error } = await supabase
-        .from('chat_messages')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: true });
+      const res = await fetch(`/api/chat/sessions?sessionId=${encodeURIComponent(sessionId)}`);
+      const data = await res.json();
 
-      if (!error && historyMsgs) {
+      if (!res.ok) {
+        console.error('Error fetching messages:', data.error);
+        return;
+      }
+
+      if (data.messages) {
         setMessages(
-          historyMsgs.map((m: any) => ({
+          data.messages.map((m: {
+            id: string;
+            role: string;
+            content: string;
+            created_at: string;
+            citations?: Citation[];
+          }) => ({
             id: m.id,
             role: m.role as 'user' | 'assistant',
             content: m.content,
@@ -182,19 +179,19 @@ export default function ChatPage() {
     if (!confirm('Delete this conversation history?')) return;
 
     try {
-      const { createClient } = await import('@/lib/supabase-client');
-      const supabase = createClient();
-      
-      const { error } = await supabase
-        .from('chat_sessions')
-        .delete()
-        .eq('id', sessionId);
+      const res = await fetch(
+        `/api/chat/sessions?sessionId=${encodeURIComponent(sessionId)}`,
+        { method: 'DELETE' }
+      );
 
-      if (!error) {
-        setSessions(sessions.filter((s) => s.id !== sessionId));
-        if (activeSessionId === sessionId) {
-          handleCreateNewSession();
-        }
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Delete failed');
+      }
+
+      setSessions(sessions.filter((s) => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        handleCreateNewSession();
       }
     } catch (err) {
       console.error('Error deleting session:', err);
@@ -208,7 +205,6 @@ export default function ChatPage() {
     setInput('');
     setGenerating(true);
     setProgressStep('Starting...');
-    setExpandedCitationIdx(null);
 
     // Add user message immediately
     const userMsgId = Date.now().toString();
@@ -531,7 +527,7 @@ export default function ChatPage() {
                       {/* Message Content */}
                       {msg.content ? (
                         <div className="space-y-3 whitespace-pre-wrap font-medium">
-                          {msg.content}
+                          {isAI ? formatChatAnswer(msg.content) : msg.content}
                         </div>
                       ) : generating && isAI ? (
                         <div className="flex items-center gap-1.5 text-slate-500">
@@ -574,54 +570,6 @@ export default function ChatPage() {
                         </div>
                       )}
 
-                      {/* Source Citations Drawer (AI messages only) */}
-                      {isAI && msg.citations && msg.citations.length > 0 && (
-                        <div className="mt-4 pt-3.5 border-t border-slate-800/60 space-y-2">
-                          <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold">
-                            <BookOpen className="h-3.5 w-3.5 text-indigo-400" />
-                            Source References
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5">
-                            {msg.citations.map((cit, cIdx) => {
-                              const isExpanded = expandedCitationIdx === cIdx;
-                              return (
-                                <div 
-                                  key={cIdx}
-                                  className="bg-slate-950/60 hover:bg-slate-950/80 border border-slate-850/80 rounded-xl p-2.5 transition"
-                                >
-                                  <button
-                                    onClick={() => setExpandedCitationIdx(isExpanded ? null : cIdx)}
-                                    className="w-full text-left flex items-center justify-between text-xs font-semibold text-slate-200 group gap-2"
-                                  >
-                                    <span className="truncate flex items-center gap-1.5">
-                                      <span className="px-1.5 py-0.25 bg-slate-900 border border-slate-800 text-[10px] text-indigo-400 rounded shrink-0">
-                                        Source {cit.sourceIndex}
-                                      </span>
-                                      <span className="truncate group-hover:text-white" title={cit.documentName}>
-                                        {cit.documentName}
-                                      </span>
-                                    </span>
-                                    {isExpanded ? <ChevronUp className="h-4.5 w-4.5 text-slate-500" /> : <ChevronDown className="h-4.5 w-4.5 text-slate-500" />}
-                                  </button>
-                                  
-                                  {cit.pageNumber && (
-                                    <span className="inline-block mt-1 text-[9px] font-medium text-slate-500">
-                                      Page Number: {cit.pageNumber}
-                                    </span>
-                                  )}
-
-                                  {isExpanded && (
-                                    <div className="mt-2.5 p-2 bg-slate-900 border border-slate-850/50 rounded-lg text-[10.5px] leading-normal text-slate-400 max-h-[140px] overflow-y-auto select-text">
-                                      {cit.content}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     {!isAI && (

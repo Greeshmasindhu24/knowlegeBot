@@ -28,13 +28,24 @@ export interface ChatPipelineResult {
 }
 
 function matchesToCitations(matches: SearchMatch[]): Citation[] {
-  return matches.map((match, idx) => ({
-    sourceIndex: idx + 1,
-    documentId: match.document_id,
-    documentName: match.document_name,
-    pageNumber: match.metadata.pageNumber,
-    content: match.content,
-  }));
+  const seenDocs = new Set<string>();
+  const citations: Citation[] = [];
+  let sourceIndex = 0;
+
+  for (const match of matches) {
+    if (seenDocs.has(match.document_id)) continue;
+    seenDocs.add(match.document_id);
+    sourceIndex += 1;
+    citations.push({
+      sourceIndex,
+      documentId: match.document_id,
+      documentName: match.document_name,
+      pageNumber: match.metadata.pageNumber,
+      content: match.content,
+    });
+  }
+
+  return citations;
 }
 
 export type ProgressCallback = (step: string) => void;
@@ -81,7 +92,7 @@ export async function prepareChatContext(
   }
 
   onProgress?.('Searching documents...');
-  const matches = await searchSimilarChunks(supabase, question, department, 5, 0.25);
+  const matches = await searchSimilarChunks(supabase, question, department, 3, 0.3);
   const citations = matchesToCitations(matches);
 
   return {
@@ -112,9 +123,7 @@ export function finalizeChatResult(
 
   let answer = guardrail.text;
   const disclaimer = guardrail.disclaimer || getDomainDisclaimer(department);
-  if (disclaimer && !answer.includes(disclaimer)) {
-    answer += `\n\n---\n*${disclaimer}*`;
-  }
+  // Disclaimer is shown in the chat UI — do not append it to the answer body (avoids duplicate text).
 
   return {
     answer,

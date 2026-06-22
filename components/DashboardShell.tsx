@@ -42,9 +42,9 @@ export default function DashboardShell({ children, userProfile: userProfileProp 
     }
 
     let cancelled = false;
-    fetchUserProfile().then((profile) => {
-      if (!cancelled && profile) {
-        setUserProfile(profile);
+    fetchUserProfile().then((result) => {
+      if (!cancelled && result.profile) {
+        setUserProfile(result.profile);
       }
     });
 
