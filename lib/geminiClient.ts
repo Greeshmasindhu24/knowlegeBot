@@ -22,11 +22,20 @@ export function getGeminiChatModel(): string {
 }
 
 export function getGeminiEmbeddingModel(): string {
-  return normalizeEnvValue(process.env.GEMINI_EMBEDDING_MODEL) || 'text-embedding-004';
+  return normalizeEnvValue(process.env.GEMINI_EMBEDDING_MODEL) || 'gemini-embedding-001';
 }
 
 function modelPath(model: string): string {
   return model.startsWith('models/') ? model : `models/${model}`;
+}
+
+function getGeminiEmbeddingDimensions(): number {
+  const explicit = process.env.EMBEDDING_DIMENSIONS?.trim();
+  if (explicit) {
+    const parsed = parseInt(explicit, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 768;
 }
 
 function geminiRequestHeaders(apiKey: string): Record<string, string> {
@@ -50,12 +59,14 @@ function formatGeminiAuthError(status: number, err: string): string {
 async function geminiEmbedText(text: string): Promise<number[]> {
   const apiKey = getGeminiApiKey();
   const model = modelPath(getGeminiEmbeddingModel());
+  const outputDimensionality = getGeminiEmbeddingDimensions();
   const res = await fetch(`${GEMINI_BASE}/${model}:embedContent`, {
     method: 'POST',
     headers: geminiRequestHeaders(apiKey),
     body: JSON.stringify({
       model,
       content: { parts: [{ text }] },
+      outputDimensionality,
     }),
     signal: AbortSignal.timeout(60_000),
   });

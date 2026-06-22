@@ -109,8 +109,9 @@ export function formatEmbeddingError(error: unknown): string {
   if (lower.includes('model') && lower.includes('not found')) {
     if (isCloudDeployment() || getLlmProvider() !== 'ollama') {
       return (
-        'Embedding model error on Render. Set LLM_PROVIDER=gemini, GEMINI_API_KEY, EMBEDDING_DIMENSIONS=768, ' +
-        'remove OLLAMA_BASE_URL and LLM_PROVIDER=ollama, redeploy, and re-upload documents.'
+        `${message} ` +
+        'On Render, use Gemini embeddings with GEMINI_EMBEDDING_MODEL=gemini-embedding-001, ' +
+        'LLM_PROVIDER=gemini, GEMINI_API_KEY, EMBEDDING_DIMENSIONS=768; remove OLLAMA_BASE_URL, redeploy, and re-upload documents.'
       );
     }
     return (
