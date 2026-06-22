@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # Database
     database_url: str = Field(
         "postgresql+asyncpg://ekb:ekb@localhost:5432/ekb",
-        env=["NEON_DATABASE_URL", "DATABASE_URL"],
+        validation_alias=AliasChoices("DATABASE_URL", "NEON_DATABASE_URL"),
     )
 
     @field_validator("database_url", mode="before")

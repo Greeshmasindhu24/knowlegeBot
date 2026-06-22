@@ -1,6 +1,7 @@
 """SQLAlchemy async database connection."""
 
 import asyncio
+import logging
 import ssl
 from collections.abc import AsyncGenerator
 from urllib.parse import urlparse
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -20,6 +23,10 @@ def _is_render_internal_postgres(host: str) -> bool:
     return host.startswith("dpg-") and host.endswith("-a")
 
 
+def _is_render_external_postgres(host: str) -> bool:
+    return host.endswith(".render.com") and "postgres" in host
+
+
 def _connect_args(database_url: str) -> dict:
     """Enable SSL for hosted Postgres (Supabase/Neon); skip for local/docker/Render internal."""
     parsed = urlparse(database_url.replace("+asyncpg", ""))
@@ -29,9 +36,14 @@ def _connect_args(database_url: str) -> dict:
 
     if host in {"localhost", "127.0.0.1", "postgres"}:
         return args
-    if _is_render_internal_postgres(host):
-        return args
     if "sslmode=disable" in database_url.lower():
+        args["ssl"] = False
+        return args
+    if _is_render_internal_postgres(host):
+        args["ssl"] = False
+        return args
+    if _is_render_external_postgres(host):
+        args["ssl"] = ssl.create_default_context()
         return args
 
     args["ssl"] = ssl.create_default_context()
@@ -41,7 +53,17 @@ def _connect_args(database_url: str) -> dict:
     return args
 
 
+def _log_database_target(database_url: str) -> None:
+    parsed = urlparse(database_url.replace("+asyncpg", ""))
+    logger.info(
+        "Database target host=%s database=%s",
+        parsed.hostname or "(missing)",
+        (parsed.path or "").lstrip("/") or "(missing)",
+    )
+
+
 settings = get_settings()
+_log_database_target(settings.database_url)
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
