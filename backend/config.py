@@ -39,9 +39,12 @@ class Settings(BaseSettings):
             return value
         url = value.strip()
         if url.startswith("postgres://"):
-            return "postgresql+asyncpg://" + url[len("postgres://") :]
-        if url.startswith("postgresql://"):
-            return "postgresql+asyncpg://" + url[len("postgresql://") :]
+            url = "postgresql+asyncpg://" + url[len("postgres://") :]
+        elif url.startswith("postgresql://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://") :]
+        # asyncpg does not accept libpq query params (e.g. sslmode=disable) in the DSN.
+        if "?" in url:
+            url = url.split("?", 1)[0]
         return url
 
     # JWT

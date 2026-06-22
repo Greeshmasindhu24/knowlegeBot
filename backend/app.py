@@ -1,7 +1,9 @@
 """Enterprise Knowledge Bot — FastAPI application entry point."""
 
+import logging
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +13,21 @@ from database.connection import init_db
 import models.db  # noqa: F401 — register ORM models before create_all
 from routers import audit, auth, chat, documents, health, upload
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _warn_if_render_missing_database_url() -> None:
+    if not os.getenv("RENDER"):
+        return
+    host = (urlparse(settings.database_url.replace("+asyncpg", "")).hostname or "").lower()
+    if host in {"localhost", "127.0.0.1"}:
+        logger.error(
+            "RENDER deploy detected but DATABASE_URL points to %s. "
+            "Set DATABASE_URL in the Render dashboard to your Postgres Internal URL.",
+            host,
+        )
 
 
 def _configure_langchain_tracing() -> None:
@@ -25,6 +41,7 @@ def _configure_langchain_tracing() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _configure_langchain_tracing()
+    _warn_if_render_missing_database_url()
     await init_db()
     yield
 

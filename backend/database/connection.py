@@ -84,14 +84,35 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
+async def verify_database_connection() -> bool:
+    """Log a clear startup probe result (visible in Render logs)."""
+    from sqlalchemy import text
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("Database connection verified at startup")
+        return True
+    except Exception as exc:
+        logger.error(
+            "Database connection failed at startup: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
+        return False
+
+
 async def init_db() -> None:
     """Create tables if they do not exist (dev convenience; use migrations in prod)."""
+    if not await verify_database_connection():
+        return
+
     async def _create() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
     try:
         await asyncio.wait_for(_create(), timeout=10)
-    except Exception:
-        # Allow the API to start even if the database is temporarily unreachable.
-        pass
+        logger.info("Database schema ready")
+    except Exception as exc:
+        logger.error("Database schema init failed: %s: %s", type(exc).__name__, exc)
