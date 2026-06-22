@@ -1,20 +1,37 @@
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { geminiEmbedDocuments } from './geminiClient';
-import { getOpenAiApiKey, getOpenAiEmbeddingModel } from './openaiConfig';
+import { getOpenAiApiKey, getOpenAiEmbeddingModel, normalizeEnvValue } from './openaiConfig';
 
 export type LlmProvider = 'openai' | 'ollama' | 'gemini';
+
+function isCloudDeployment(): boolean {
+  return Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_URL);
+}
+
+export function getLlmProvider(): LlmProvider {
+  const configured = (process.env.LLM_PROVIDER || 'openai').trim().toLowerCase();
+  const geminiKey = normalizeEnvValue(process.env.GEMINI_API_KEY);
+
+  // Ollama only runs locally — on Render always use Gemini (free) or OpenAI.
+  if (isCloudDeployment()) {
+    if (geminiKey) return 'gemini';
+    if (configured === 'gemini') {
+      throw new Error(
+        'LLM_PROVIDER=gemini but GEMINI_API_KEY is missing on Render. Add it in Environment and redeploy.'
+      );
+    }
+    return 'openai';
+  }
+
+  if (configured === 'ollama') return 'ollama';
+  if (configured === 'gemini') return 'gemini';
+  return 'openai';
+}
 
 export interface EmbeddingsClient {
   embedDocuments(texts: string[]): Promise<number[][]>;
   embedQuery(text: string): Promise<number[]>;
   provider: LlmProvider;
-}
-
-export function getLlmProvider(): LlmProvider {
-  const value = (process.env.LLM_PROVIDER || 'openai').trim().toLowerCase();
-  if (value === 'ollama') return 'ollama';
-  if (value === 'gemini') return 'gemini';
-  return 'openai';
 }
 
 /** Expected vector size for pgvector (768 = Ollama/Gemini, 1536 = OpenAI). */
@@ -77,6 +94,12 @@ export function formatEmbeddingError(error: unknown): string {
   }
 
   if (lower.includes('econnrefused') || lower.includes('fetch failed')) {
+    if (isCloudDeployment() || getLlmProvider() === 'gemini') {
+      return (
+        'Cannot reach the embedding API on Render. Set GEMINI_API_KEY, LLM_PROVIDER=gemini, ' +
+        'EMBEDDING_DIMENSIONS=768, remove OLLAMA_* vars, redeploy, and re-upload documents.'
+      );
+    }
     return (
       `Cannot reach Ollama at ${ollamaBaseUrl()}. Start Ollama (ollama serve), pull the embedding model ` +
       `(ollama pull ${ollamaEmbeddingModel()}), then retry.`
@@ -84,10 +107,10 @@ export function formatEmbeddingError(error: unknown): string {
   }
 
   if (lower.includes('model') && lower.includes('not found')) {
-    if (process.env.RENDER) {
+    if (isCloudDeployment() || getLlmProvider() !== 'ollama') {
       return (
-        'Embedding failed on Render. Set LLM_PROVIDER=gemini, GEMINI_API_KEY, EMBEDDING_DIMENSIONS=768, ' +
-        'remove OLLAMA_BASE_URL, redeploy, and re-upload documents.'
+        'Embedding model error on Render. Set LLM_PROVIDER=gemini, GEMINI_API_KEY, EMBEDDING_DIMENSIONS=768, ' +
+        'remove OLLAMA_BASE_URL and LLM_PROVIDER=ollama, redeploy, and re-upload documents.'
       );
     }
     return (
@@ -201,7 +224,6 @@ export function assertEmbeddingDimensions(vectors: number[][]): void {
   }
 }
 
-/** OpenAI by default; on quota error falls back to Ollama when OLLAMA_BASE_URL is set. */
 export async function embedDocumentsResilient(texts: string[]): Promise<number[][]> {
   const provider = getLlmProvider();
   if (provider === 'ollama') {
