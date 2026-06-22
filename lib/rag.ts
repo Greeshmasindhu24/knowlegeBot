@@ -10,6 +10,7 @@ import {
   getLlmProvider,
 } from './embeddings';
 import { getOpenAiApiKey, getOpenAiChatModel } from './openaiConfig';
+import { createGeminiChatModel } from './geminiClient';
 
 export interface SearchMatch {
   id: string;
@@ -112,8 +113,12 @@ class OllamaChatModel {
 export { getEmbeddingsClient } from './embeddings';
 
 export const getLLMClient = (streaming = true) => {
-  if (getLlmProvider() === 'ollama') {
+  const provider = getLlmProvider();
+  if (provider === 'ollama') {
     return new OllamaChatModel(ollamaChatModel(), ollamaBaseUrl(), streaming) as unknown as ChatOpenAI;
+  }
+  if (provider === 'gemini') {
+    return createGeminiChatModel(streaming) as unknown as ChatOpenAI;
   }
 
   const key = getOpenAiApiKey();

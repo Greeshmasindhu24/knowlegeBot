@@ -1,7 +1,8 @@
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { geminiEmbedDocuments } from './geminiClient';
 import { getOpenAiApiKey, getOpenAiEmbeddingModel } from './openaiConfig';
 
-export type LlmProvider = 'openai' | 'ollama';
+export type LlmProvider = 'openai' | 'ollama' | 'gemini';
 
 export interface EmbeddingsClient {
   embedDocuments(texts: string[]): Promise<number[][]>;
@@ -11,17 +12,20 @@ export interface EmbeddingsClient {
 
 export function getLlmProvider(): LlmProvider {
   const value = (process.env.LLM_PROVIDER || 'openai').trim().toLowerCase();
-  return value === 'ollama' ? 'ollama' : 'openai';
+  if (value === 'ollama') return 'ollama';
+  if (value === 'gemini') return 'gemini';
+  return 'openai';
 }
 
-/** Expected vector size for pgvector (768 = Ollama nomic-embed-text, 1536 = OpenAI text-embedding-3-small). */
+/** Expected vector size for pgvector (768 = Ollama/Gemini, 1536 = OpenAI). */
 export function getEmbeddingDimensions(): number {
   const explicit = process.env.EMBEDDING_DIMENSIONS?.trim();
   if (explicit) {
     const parsed = parseInt(explicit, 10);
     if (!Number.isNaN(parsed) && parsed > 0) return parsed;
   }
-  return getLlmProvider() === 'ollama' ? 768 : 1536;
+  const provider = getLlmProvider();
+  return provider === 'ollama' || provider === 'gemini' ? 768 : 1536;
 }
 
 export function isOllamaConfigured(): boolean {
@@ -52,12 +56,9 @@ export function formatEmbeddingError(error: unknown): string {
   const lower = message.toLowerCase();
 
   if (isOpenAiQuotaError(error)) {
-    const ollamaHint = isOllamaConfigured()
-      ? ' Or set LLM_PROVIDER=ollama in .env.local, run database/migrations/004_ollama_768_embeddings.sql, restart the dev server, and retry.'
-      : ' To avoid OpenAI billing, install Ollama, run `ollama pull nomic-embed-text`, set LLM_PROVIDER=ollama in .env.local, run database/migrations/004_ollama_768_embeddings.sql, and restart.';
     return (
-      'OpenAI API quota exceeded. Check billing at https://platform.openai.com/account/billing.' +
-      ollamaHint
+      'OpenAI API quota exceeded. For a free option on Render, set LLM_PROVIDER=gemini, add GEMINI_API_KEY ' +
+      '(https://aistudio.google.com/apikey), EMBEDDING_DIMENSIONS=768, run database/migrations/004_ollama_768_embeddings.sql in Supabase, and re-upload documents.'
     );
   }
 
@@ -145,6 +146,17 @@ function assertOpenAiConfigured(): void {
   getOpenAiApiKey();
 }
 
+export function createGeminiEmbeddingsClient(): EmbeddingsClient {
+  return {
+    provider: 'gemini',
+    embedDocuments: geminiEmbedDocuments,
+    embedQuery: async (text) => {
+      const [vector] = await geminiEmbedDocuments([text]);
+      return vector;
+    },
+  };
+}
+
 export function createOpenAiEmbeddingsClient(): EmbeddingsClient {
   assertOpenAiConfigured();
   const openai = new OpenAIEmbeddings({
@@ -159,9 +171,9 @@ export function createOpenAiEmbeddingsClient(): EmbeddingsClient {
 }
 
 export function getEmbeddingsClient(): EmbeddingsClient {
-  if (getLlmProvider() === 'ollama') {
-    return createOllamaEmbeddingsClient();
-  }
+  const provider = getLlmProvider();
+  if (provider === 'ollama') return createOllamaEmbeddingsClient();
+  if (provider === 'gemini') return createGeminiEmbeddingsClient();
   return createOpenAiEmbeddingsClient();
 }
 
@@ -172,7 +184,7 @@ export function assertEmbeddingDimensions(vectors: number[][]): void {
   if (actual !== expected) {
     throw new Error(
       `Embedding dimension mismatch: model returned ${actual} but EMBEDDING_DIMENSIONS=${expected}. ` +
-      (getLlmProvider() === 'ollama'
+      (getLlmProvider() === 'ollama' || getLlmProvider() === 'gemini'
         ? 'Run database/migrations/004_ollama_768_embeddings.sql in Supabase SQL Editor, set EMBEDDING_DIMENSIONS=768, clear old chunks, and retry upload.'
         : 'Check OPENAI_EMBEDDING_MODEL and EMBEDDING_DIMENSIONS in .env.local.')
     );
@@ -181,8 +193,15 @@ export function assertEmbeddingDimensions(vectors: number[][]): void {
 
 /** OpenAI by default; on quota error falls back to Ollama when OLLAMA_BASE_URL is set. */
 export async function embedDocumentsResilient(texts: string[]): Promise<number[][]> {
-  if (getLlmProvider() === 'ollama') {
+  const provider = getLlmProvider();
+  if (provider === 'ollama') {
     const client = createOllamaEmbeddingsClient();
+    const vectors = await client.embedDocuments(texts);
+    assertEmbeddingDimensions(vectors);
+    return vectors;
+  }
+  if (provider === 'gemini') {
+    const client = createGeminiEmbeddingsClient();
     const vectors = await client.embedDocuments(texts);
     assertEmbeddingDimensions(vectors);
     return vectors;
