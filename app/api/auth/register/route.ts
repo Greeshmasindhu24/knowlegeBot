@@ -30,12 +30,19 @@ export async function POST(request: NextRequest) {
     const data = await parseJsonResponse<{ detail?: string }>(res);
 
     if (!res.ok) {
-      const detail =
+      let detail =
         typeof data.detail === 'string'
           ? data.detail
           : res.status === 404
             ? `Backend not found at ${getBackendUrl()}. Check BACKEND_URL / NEXT_PUBLIC_API_URL on Render.`
             : 'Registration failed';
+      if (
+        (res.status === 502 || res.status === 503) &&
+        detail.length > 200 &&
+        /<!doctype|<html/i.test(detail)
+      ) {
+        detail = `API server is unavailable at ${getBackendUrl()}. Verify the backend Render service is live and BACKEND_URL is set correctly.`;
+      }
       return NextResponse.json({ detail }, { status: res.status });
     }
 

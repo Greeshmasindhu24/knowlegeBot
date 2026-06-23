@@ -3,6 +3,14 @@ import { normalizeEnvValue } from './openaiConfig';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 export function getGeminiApiKey(): string {
+  const googleKey = normalizeEnvValue(process.env.GOOGLE_API_KEY);
+  if (googleKey && googleKey !== normalizeEnvValue(process.env.GEMINI_API_KEY)) {
+    throw new Error(
+      'GOOGLE_API_KEY is set in the environment and may override GEMINI_API_KEY with an old/expired key. ' +
+      'Remove GOOGLE_API_KEY from Windows/Render env vars and use only GEMINI_API_KEY.'
+    );
+  }
+
   const key = normalizeEnvValue(process.env.GEMINI_API_KEY);
   if (!key) {
     throw new Error(
@@ -70,9 +78,27 @@ function geminiRequestHeaders(apiKey: string): Record<string, string> {
 }
 
 function formatGeminiAuthError(status: number, err: string): string {
-  if (status === 401) {
+  const lower = err.toLowerCase();
+  if (status === 403 && lower.includes('leaked')) {
     return (
-      `Gemini authentication failed (401). Use a key from https://aistudio.google.com/apikey ` +
+      'Your Gemini API key was revoked by Google (reported as leaked). ' +
+      'Create a new key at https://aistudio.google.com/apikey, delete the old key, ' +
+      'update GEMINI_API_KEY in Render and .env.local (never commit keys to git), then redeploy.'
+    );
+  }
+  if (
+    status === 400 &&
+    (lower.includes('expired') || lower.includes('api_key_invalid') || lower.includes('api key expired'))
+  ) {
+    return (
+      'Gemini API key is invalid or expired. Create a fresh key at https://aistudio.google.com/apikey, ' +
+      'paste it in GEMINI_API_KEY (.env.local and Render frontend), remove any GOOGLE_API_KEY env var, ' +
+      'restart npm run dev (or redeploy on Render), then try again.'
+    );
+  }
+  if (status === 401 || status === 403) {
+    return (
+      `Gemini authentication failed (${status}). Use a key from https://aistudio.google.com/apikey ` +
       `(AIza... or AQ....), paste the full key in Render GEMINI_API_KEY with no quotes/spaces, then redeploy. ` +
       `Details: ${err.slice(0, 200)}`
     );

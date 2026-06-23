@@ -29,11 +29,13 @@ export default function SettingsPage() {
     supabaseConnected: boolean | null;
     pgvectorInstalled: boolean | null;
     storageBucketConfigured: boolean | null;
+    storageError: string | null;
     openaiKeyLoaded: boolean | null;
   }>({
     supabaseConnected: null,
     pgvectorInstalled: null,
     storageBucketConfigured: null,
+    storageError: null,
     openaiKeyLoaded: null,
   });
 
@@ -102,18 +104,33 @@ export default function SettingsPage() {
       const supabaseConnected = !vectorCheckErr || vectorCheckErr.code !== 'PGRST111'; // Connection test
       const pgvectorInstalled = !vectorCheckErr || (vectorCheckErr.code !== '42883' && vectorCheckErr.message !== 'function public.match_document_chunks(vector, double precision, integer, text) does not exist');
 
-      // 2. Check Storage bucket accessible
-      const { data: bucketData, error: bucketErr } = await supabase.storage.getBucket('documents');
-      const storageBucketConfigured = !bucketErr && !!bucketData;
+      // 2. Check Storage via server route (service role — anon key cannot read private buckets)
+      let storageBucketConfigured = false;
+      let storageError: string | null = null;
+      try {
+        const storageRes = await fetch('/api/health/storage');
+        const storageData = await storageRes.json();
+        storageBucketConfigured = storageRes.ok && storageData.ok === true;
+        if (!storageBucketConfigured) {
+          storageError =
+            typeof storageData.error === 'string'
+              ? storageData.error
+              : typeof storageData.hint === 'string'
+                ? storageData.hint
+                : 'Storage check failed.';
+        }
+      } catch {
+        storageBucketConfigured = false;
+        storageError = 'Could not reach /api/health/storage on this deployment.';
+      }
 
-      // 3. Check if OpenAI Key is set by calling a test route or check env
-      // (We fetch the admin panel or check status internally, let's assume if client is loaded and env exists it is set. Or we can mock diagnostic verification)
-      const openaiKeyLoaded = true; // Safe check since route works
+      const openaiKeyLoaded = true;
 
       setDiagnostics({
         supabaseConnected,
         pgvectorInstalled,
         storageBucketConfigured,
+        storageError,
         openaiKeyLoaded
       });
     } catch (err) {
@@ -122,6 +139,7 @@ export default function SettingsPage() {
         supabaseConnected: false,
         pgvectorInstalled: false,
         storageBucketConfigured: false,
+        storageError: 'Diagnostic run failed.',
         openaiKeyLoaded: false,
       });
     } finally {
@@ -243,7 +261,11 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between p-3.5 bg-slate-950/45 border border-slate-850/60 rounded-xl">
               <div className="space-y-0.5">
                 <p className="text-xs font-semibold text-slate-200">Supabase Storage Bucket ('documents')</p>
-                <p className="text-[9px] text-slate-500">Verifying secure document repository accessibility</p>
+                <p className="text-[9px] text-slate-500">
+                  {diagnostics.storageError
+                    ? diagnostics.storageError
+                    : 'Verifying secure document repository accessibility'}
+                </p>
               </div>
               {diagnostics.storageBucketConfigured === null ? (
                 <Loader2 className="h-4.5 w-4.5 animate-spin text-slate-500" />

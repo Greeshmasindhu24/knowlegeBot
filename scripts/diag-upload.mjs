@@ -103,6 +103,16 @@ await check('documents bucket', async () => {
   return data ? 'exists' : 'missing';
 });
 
+await check('storage upload probe', async () => {
+  const probePath = `__healthcheck__/${Date.now()}-diag.txt`;
+  const { error: uploadError } = await supabase.storage
+    .from('documents')
+    .upload(probePath, Buffer.from('diag'), { contentType: 'text/plain', upsert: false });
+  if (uploadError) return uploadError.message;
+  await supabase.storage.from('documents').remove([probePath]);
+  return 'OK';
+});
+
 await check('match_document_chunks RPC', async () => {
   const { error } = await supabase.rpc('match_document_chunks', {
     query_embedding: Array(embeddingDimensions).fill(0),

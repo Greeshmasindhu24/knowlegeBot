@@ -6,6 +6,10 @@ export const DOCUMENTS_BUCKET = 'documents';
 
 let bucketReady: Promise<void> | null = null;
 
+function resetBucketReadyCache(): void {
+  bucketReady = null;
+}
+
 function isBucketMissingError(message: string): boolean {
   const lower = message.toLowerCase();
   return lower.includes('bucket not found') || lower.includes('not found');
@@ -22,7 +26,10 @@ function isAlreadyExistsError(message: string): boolean {
  */
 export async function ensureDocumentsBucket(supabaseAdmin: SupabaseClient): Promise<void> {
   if (!bucketReady) {
-    bucketReady = ensureDocumentsBucketOnce(supabaseAdmin);
+    bucketReady = ensureDocumentsBucketOnce(supabaseAdmin).catch((error) => {
+      resetBucketReadyCache();
+      throw error;
+    });
   }
   return bucketReady;
 }

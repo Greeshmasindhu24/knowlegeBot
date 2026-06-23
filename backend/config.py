@@ -1,6 +1,7 @@
 """Application configuration loaded from environment variables."""
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -57,6 +58,15 @@ class Settings(BaseSettings):
     chroma_port: int = 8001
     chroma_collection: str = "enterprise_documents"
     chroma_persist_dir: str | None = None  # in-process mode when set
+
+    @field_validator("chroma_persist_dir", mode="before")
+    @classmethod
+    def default_chroma_persist_on_render(cls, value: Any) -> Any:
+        if value:
+            return value
+        if os.getenv("RENDER"):
+            return "/tmp/chroma"
+        return None
 
     # LLM
     # "gemini" is accepted because the deployed frontend handles Gemini chat.
