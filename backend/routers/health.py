@@ -16,6 +16,12 @@ router = APIRouter(tags=["health"])
 settings = get_settings()
 
 
+@router.get("/health/live")
+async def liveness() -> dict[str, str]:
+    """Instant probe for Render — no database or Chroma."""
+    return {"status": "alive"}
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health_check(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     db_status = "ok"
