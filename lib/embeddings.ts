@@ -9,17 +9,23 @@ function isCloudDeployment(): boolean {
 }
 
 export function getLlmProvider(): LlmProvider {
-  const configured = (process.env.LLM_PROVIDER || 'openai').trim().toLowerCase();
+  const configured = (process.env.LLM_PROVIDER || 'openai').trim().toLowerCase() as LlmProvider;
   const geminiKey = normalizeEnvValue(process.env.GEMINI_API_KEY);
+  const openaiKey = normalizeEnvValue(process.env.OPENAI_API_KEY);
 
-  // Ollama only runs locally — on Render always use Gemini (free) or OpenAI.
+  // Ollama only runs locally — on Render use OpenAI or Gemini.
   if (isCloudDeployment()) {
-    if (geminiKey) return 'gemini';
+    if (configured === 'openai') return 'openai';
     if (configured === 'gemini') {
-      throw new Error(
-        'LLM_PROVIDER=gemini but GEMINI_API_KEY is missing on Render. Add it in Environment and redeploy.'
-      );
+      if (!geminiKey) {
+        throw new Error(
+          'LLM_PROVIDER=gemini but GEMINI_API_KEY is missing on Render. Add it in Environment and redeploy.'
+        );
+      }
+      return 'gemini';
     }
+    if (openaiKey) return 'openai';
+    if (geminiKey) return 'gemini';
     return 'openai';
   }
 
