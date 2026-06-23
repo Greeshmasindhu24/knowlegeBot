@@ -5,6 +5,8 @@ export function getBackendUrl(): string {
     process.env.NEXT_PUBLIC_API_URL?.trim() ||
     'http://localhost:8000';
 
+  // Render dashboard mistake: value pasted with quotes → invalid fetch URL
+  raw = raw.replace(/^["']|["']$/g, '');
   raw = raw.replace(/\/$/, '');
   // Common Render mistake: ...onrender.com/api — FastAPI routes are /auth/login not /api/auth/login
   if (raw.endsWith('/api')) {
